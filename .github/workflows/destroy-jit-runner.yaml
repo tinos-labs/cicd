@@ -1,0 +1,28 @@
+name: Shared Cleanup
+on:
+  workflow_call:
+    inputs:
+      env-name:
+        required: true
+        type: string
+
+jobs:
+  destroy-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy droplet
+        run: |
+          # sudo snap install doctl
+          # doctl auth init -t $DO_TOKEN
+          # doctl compute droplet delete ${{ needs.setup-runner.outputs.droplet_id }} -f
+
+          DROPLET_ID="${{ needs.setup-runner.outputs.droplet_id }}"
+          if [ -n "$DROPLET_ID" ]; then
+            echo "🧹 Destroying droplet (ID: $DROPLET_ID)..."
+            curl -s -X DELETE \
+              -H "Authorization: Bearer ${{ secrets.DO_TOKEN }}" \
+              "https://api.digitalocean.com/v2/droplets/$DROPLET_ID"
+              echo "✅ Droplet destroyed successfully."
+          else
+            echo "⚠️ No droplet ID found — skipping destroy."
+          fi

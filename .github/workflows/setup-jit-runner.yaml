@@ -1,0 +1,121 @@
+name: DigitalOcean JIT Runner Setup
+
+on:
+  workflow_call:
+    outputs:
+      droplet_id:
+        description: "The ID of the created DigitalOcean droplet"
+        value: ${{ jobs.setup-runner.outputs.droplet_id }}
+      runner_label:
+        description: "The label of the GitHub runner"
+        value: ${{ jobs.setup-runner.outputs.runner_label }}
+
+env:
+  RUNNER_NAME: gh-jit-runner-${{ github.event.repository.name }}-${{ github.run_id }}
+
+jobs:
+  setup-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      droplet_id: ${{ steps.create.outputs.droplet_id }}
+      runner_label: ${{ env.RUNNER_NAME }}
+    steps:
+      - name: Get GitHub Runner Registration Token
+        id: get_token
+        run: |
+          set -e
+          
+          echo "🔑 Requesting GitHub runner registration token..."
+          
+          TOKEN_RESPONSE=$(curl -sX POST \
+            -H "Authorization: token ${{ secrets.GH_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runners/registration-token)
+            
+          TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .token)
+
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "❌ Failed to get runner token!"
+            echo "Response: $TOKEN_RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Successfully retrieved runner token."
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Create DigitalOcean Droplet For Runner
+        id: create
+        env:
+          RUNNER_TOKEN: ${{ steps.get_token.outputs.token }}
+          DO_REGION: ${{ vars.DO_REGION || 'blr1' }}
+          DO_SIZE: ${{ vars.DO_SIZE || 's-2vcpu-2gb' }}
+          DO_IMAGE: ${{ vars.DO_IMAGE || 'docker-20-04' }}
+        run: |
+          set -e
+
+          # Define cloud-init script
+          USER_DATA=$(cat <<'EOF'
+          #cloud-config
+          users:
+            - name: runner
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              shell: /bin/bash
+              groups: sudo
+          write_files:
+            - path: /home/runner/setup_runner.sh
+              permissions: '0755'
+              content: |
+                #!/usr/bin/env bash
+                set -e
+                RUNNER_VERSION=$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')
+                echo "Runner version: $RUNNER_VERSION"
+                curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+                tar xzf actions-runner.tar.gz
+                ./config.sh --url https://github.com/${{ github.repository }} --token ${{ env.RUNNER_TOKEN }} --unattended --name "${{ env.RUNNER_NAME }}" --labels ${{ env.RUNNER_NAME }} --ephemeral
+                ./run.sh
+          runcmd:
+            - apt update && apt install -y curl jq
+            - chown -R runner:runner /home/runner
+            - cd /home/runner/ && sudo -u runner bash setup_runner.sh
+          EOF
+          )
+
+          # Check if droplet already exists
+          echo "🔍 Checking if droplet already exists..."
+          EXISTING_RESPONSE=$(curl -s -X GET "https://api.digitalocean.com/v2/droplets?tag_name=gh-jit-runner" \
+            -H "Authorization: Bearer ${{ secrets.DO_TOKEN }}")
+          
+          EXISTING_ID=$(echo "$EXISTING_RESPONSE" | jq -r --arg name "$RUNNER_NAME" '.droplets[] | select(.name == $name) | .id' | head -n1)
+          
+          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+            echo "⚠️ Droplet already exists with ID: $EXISTING_ID"
+            echo "droplet_id=$EXISTING_ID" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create droplet
+          echo "🌱 Creating new DigitalOcean droplet..."
+          CREATE_RESPONSE=$(curl -s -X POST "https://api.digitalocean.com/v2/droplets" \
+            -H "Authorization: Bearer ${{ secrets.DO_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "name": "${{ env.RUNNER_NAME }}",
+            "region": "${{ env.DO_REGION }}",
+            "size": "${{ env.DO_SIZE }}",
+            "image": "${{ env.DO_IMAGE }}",
+            "user_data": $(jq -Rs . <<< "$USER_DATA"),
+            "tags": ["gh-jit-runner"]
+          }
+          EOF
+          )
+
+          echo "$CREATE_RESPONSE" | jq .
+          DROPLET_ID=$(echo "$CREATE_RESPONSE" | jq -r '.droplet.id')
+          if [ "$DROPLET_ID" = "null" ] || [ -z "$DROPLET_ID" ]; then
+            echo "❌ Failed to create droplet!"
+            exit 1
+          fi
+
+          echo "✅ Droplet created with ID: $DROPLET_ID"
+          echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
