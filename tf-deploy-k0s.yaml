@@ -1,0 +1,67 @@
+name: Deploy k0s (tofu)
+
+on:
+  workflow_call:
+    inputs:
+      runner_label:
+        description: "The label of the GitHub runner"
+        required: true
+        type: string
+
+jobs:
+  deploy-k0s:
+    name: Deploy k0s on JIT runner
+    runs-on: ${{ inputs.runner_label }}
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      ORG_NAME: ${{ vars.TFC_ORG_NAME }}
+      WORKSPACE_NAME: ${{ vars.TFC_WORKSPACE_NAME }}
+
+      TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
+      TF_VAR_ssh_key_path: .k0s_id_ed25519
+      TF_VAR_kubeconfig_path: .kubeconfig
+      TF_VAR_github_app_id: ${{ secrets.GH_APP_ID }}
+      TF_VAR_github_app_installation_id: ${{ secrets.GH_APP_INSTALLATION_ID }}
+      TF_VAR_github_app_pem: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      TF_VAR_git_url: ${{ vars.GIT_REPO_URL}}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+
+      KUBECONFIG: $TF_VAR_kubeconfig_path
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout Workflows repository
+        uses: actions/checkout@v4
+        with:
+          repository: tinos-labs/workflows
+          ref: main
+          path: workflows
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Copy Files from Workflows
+        run: |
+          cp -r workflows/tf/  ./
+
+      - name: Setup OpenTofu CLI
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 'latest'
+
+      - name: Initialize OpenTofu
+        run: tofu init
+
+      - name: Validate OpenTofu Configuration
+        run: tofu validate
+    
+      - name: Pull TF State
+        run: |
+          bash scripts/tf_state.sh pull
+
+      - name: Run TF Apply
+        run: |
+          bash scripts/tf_apply.sh
+
+      - name: Push TF State
+        run: |
+          bash scripts/tf_state.sh push

@@ -1,8 +1,8 @@
-name: Shared Cleanup
+name: Destroy DigitalOcean JIT Runner
 on:
   workflow_call:
     inputs:
-      env-name:
+      droplet_id:
         required: true
         type: string
 
@@ -12,11 +12,7 @@ jobs:
     steps:
       - name: Destroy droplet
         run: |
-          # sudo snap install doctl
-          # doctl auth init -t $DO_TOKEN
-          # doctl compute droplet delete ${{ needs.setup-runner.outputs.droplet_id }} -f
-
-          DROPLET_ID="${{ needs.setup-runner.outputs.droplet_id }}"
+          DROPLET_ID="${{ inputs.droplet_id }}"
           if [ -n "$DROPLET_ID" ]; then
             echo "🧹 Destroying droplet (ID: $DROPLET_ID)..."
             curl -s -X DELETE \

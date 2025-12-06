@@ -1,1 +1,1 @@
-# cicd-workflows
+# CICD Workflows

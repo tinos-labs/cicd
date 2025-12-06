@@ -1,0 +1,26 @@
+#cloud-config
+
+users:
+  - name: k0sadmin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    lock_passwd: true
+    ssh-authorized-keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIRCdzuxcnVFBlOHEqWKOidxx2Qs7ghdsCNYyO/iZq/H
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+package_upgrade: true
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-custom-port.conf
+    permissions: '0644'
+    content: |
+      Port 5667
+
+runcmd:
+  - systemctl restart sshd
+  - swapoff -a
