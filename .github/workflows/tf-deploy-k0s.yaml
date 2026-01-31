@@ -46,8 +46,8 @@ jobs:
       - name: Set up SSH key for k0s nodes
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.K0S_SSH_PRIVATE_KEY }}" > ${{ envs.TF_VAR_ssh_key_path }}
-          chmod 600 ${{ envs.TF_VAR_ssh_key_path }}
+          echo "${{ secrets.K0S_SSH_PRIVATE_KEY }}" > ${{ env.TF_VAR_ssh_key_path }}
+          chmod 600 ${{ env.TF_VAR_ssh_key_path }}
 
       - name: Setup OpenTofu CLI
         uses: opentofu/setup-opentofu@v1
