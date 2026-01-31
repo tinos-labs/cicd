@@ -60,7 +60,9 @@ jobs:
             - name: runner
               sudo: ALL=(ALL) NOPASSWD:ALL
               shell: /bin/bash
-              groups: sudo
+              groups: 
+                - sudo
+                - docker
           write_files:
             - path: /home/runner/setup_runner.sh
               permissions: '0755'
