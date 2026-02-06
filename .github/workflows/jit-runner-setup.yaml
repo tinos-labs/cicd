@@ -5,16 +5,16 @@ on:
     outputs:
       droplet_id:
         description: "The ID of the created DigitalOcean droplet"
-        value: ${{ jobs.setup-runner.outputs.droplet_id }}
+        value: ${{ jobs.deploy-runner.outputs.droplet_id }}
       runner_label:
         description: "The label of the GitHub runner"
-        value: ${{ jobs.setup-runner.outputs.runner_label }}
+        value: ${{ jobs.deploy-runner.outputs.runner_label }}
 
 env:
   RUNNER_NAME: gh-jit-runner-${{ github.event.repository.name }}-${{ github.run_id }}
 
 jobs:
-  setup-runner:
+  deploy-runner:
     runs-on: ubuntu-latest
     outputs:
       droplet_id: ${{ steps.create.outputs.droplet_id }}
